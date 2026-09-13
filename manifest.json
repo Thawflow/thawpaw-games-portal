@@ -24,6 +24,14 @@
       "icon": "sword",
       "description": "少年剑客林风闯庙宇，六波Boss挑战·无限关卡·买武器·变身Boss！⚔️",
       "color": "#b43228"
+    },
+    {
+      "id": "minesweeper",
+      "name": "扫雷",
+      "file": "minesweeper.html",
+      "icon": "mine",
+      "description": "经典扫雷 · 鼠标左键翻格 · 右键标旗 · 笑脸重置 💣",
+      "color": "#3a5a85"
     }
   ]
 }

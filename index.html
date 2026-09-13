@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
 <meta name="baidu-site-verification" content="codeva-bCb6lxUJyf" />
 <meta name="google-site-verification" content="WZX6tGmSS2x25jkjG09JiTd6RuxNxTOW9AVIe0I3cW8" />
-<meta name="description" content="ThawPaw Games - ThawPaw 做的游戏合集！猫武士大冒险、少年剑客闯江湖、地下城探险、贪吃蛇商店，快来玩吧！" />
+<meta name="description" content="ThawPaw Games - 苗苗做的游戏合集！猫武士大冒险、少年剑客闯江湖、地下城探险、贪吃蛇商店，快来玩吧！" />
 <meta property="og:title" content="ThawPaw Games 🎮" />
-<meta property="og:description" content="ThawPaw 做的游戏合集！猫武士大冒险、少年剑客、地下城、贪吃蛇，免费在线玩！" />
+<meta property="og:description" content="苗苗做的游戏合集！猫武士大冒险、少年剑客、地下城、贪吃蛇，免费在线玩！" />
 <meta property="og:url" content="https://games.thawflow.com/" />
 <meta property="og:type" content="website" />
 <meta name="twitter:card" content="summary" />
 <link rel="canonical" href="https://games.thawflow.com/" />
-<title>Thawpaw Games 🎮 - ThawPaw 的游戏合集</title>
+<title>Thawpaw Games 🎮 - 苗苗的游戏合集</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
@@ -344,7 +344,7 @@ body.no-user footer{display:none}
 </div>
 
 <footer>Made with ❄️ by IcePaw &amp; ThawPaw · <span id="build-time" style="opacity:.7">加载中…</span></footer>
-<script>var BUILD_TIME="20260829-1948";var el=document.getElementById("build-time");if(el)el.textContent="v"+BUILD_TIME;</script>
+<script>var BUILD_TIME="20260913-0648";var el=document.getElementById("build-time");if(el)el.textContent="v"+BUILD_TIME;</script>
 
 <!-- ===== FEEDBACK FLOATING BUTTON ===== -->
 <button class="feedback-btn" id="feedback-btn" onclick="openFeedback()" title="反馈">
@@ -442,6 +442,43 @@ const THUMB_ART = {
       <circle cx="30" cy="35" r="1" fill="#fff" opacity=".4"/>
       <circle cx="170" cy="45" r=".8" fill="#fff" opacity=".3"/>
       <circle cx="55" cy="20" r=".6" fill="#fff" opacity=".3"/>
+    </svg>`
+  },
+  mine: {
+    bg: 'linear-gradient(135deg, #0d1424 0%, #1a3055 40%, #0d1424 100%)',
+    svg: `<svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- 顶部笑脸头栏 -->
+      <rect x="60" y="35" width="80" height="28" rx="6" fill="#16213e" stroke="#2a4a78" stroke-width="1.5"/>
+      <text x="100" y="58" text-anchor="middle" font-size="22">😀</text>
+      <!-- 棋盘背景 -->
+      <rect x="50" y="75" width="100" height="100" rx="4" fill="#0a0f1c"/>
+      <!-- 暗格 -->
+      <g fill="#3a5a85" stroke="#5588cc" stroke-width="0.5">
+        <rect x="54" y="79" width="20" height="20" rx="2"/>
+        <rect x="76" y="79" width="20" height="20" rx="2"/>
+        <rect x="98" y="79" width="20" height="20" rx="2"/>
+        <rect x="120" y="79" width="20" height="20" rx="2"/>
+        <rect x="54" y="101" width="20" height="20" rx="2"/>
+        <rect x="76" y="101" width="20" height="20" rx="2"/>
+        <rect x="120" y="101" width="20" height="20" rx="2"/>
+        <rect x="54" y="123" width="20" height="20" rx="2"/>
+        <rect x="76" y="123" width="20" height="20" rx="2"/>
+        <rect x="98" y="123" width="20" height="20" rx="2"/>
+        <rect x="120" y="123" width="20" height="20" rx="2"/>
+        <rect x="54" y="145" width="20" height="20" rx="2"/>
+        <rect x="120" y="145" width="20" height="20" rx="2"/>
+      </g>
+      <!-- 翻开的格 -->
+      <g fill="#1a1f30">
+        <rect x="98" y="101" width="20" height="20" rx="2"/>
+        <rect x="98" y="145" width="20" height="20" rx="2"/>
+      </g>
+      <!-- 数字 1 -->
+      <text x="108" y="116" text-anchor="middle" font-size="13" font-weight="800" fill="#4a9eff">1</text>
+      <!-- 数字 2 -->
+      <text x="108" y="160" text-anchor="middle" font-size="13" font-weight="800" fill="#4ac14a">2</text>
+      <!-- 旗 -->
+      <text x="86" y="138" text-anchor="middle" font-size="14">🚩</text>
     </svg>`
   }
 };
@@ -994,7 +1031,7 @@ if(getActiveId()){
 }
 
 // ── Load manifest & build cards ──
-const FALLBACK_MANIFEST={"title":"Thawpaw Games","games":[{"id":"moonstone-quest","name":"\u732b\u6b66\u58eb\u5927\u5192\u9669","file":"moonstone-quest.html","icon":"moonstone","description":"\u732b\u54aa\u5b66\u5f92\u6df1\u5165\u5730\u4e0b10\u5c42\uff0c\u5bfb\u627e\u4f20\u8bf4\u4e2d\u7684\u6708\u4eae\u77f3 \ud83d\udd2e","color":"#4488ff"},{"id":"snake","name":"Snake Game","file":"snake.html","icon":"snake","description":"Classic snake with shops, banks, and backpacks!","color":"#4caf50"},{"id":"sword-master","name":"\u5c11\u5e74\u5251\u5ba2\u95ef\u6c5f\u6e56","file":"sword-master.html","icon":"sword","description":"\u5c11\u5e74\u5251\u5ba2\u6797\u98ce\u95ef\u5e99\u5b87\uff0c\u516d\u6ce2Boss\u6311\u6218\u00b7\u65e0\u9650\u5173\u5361\u00b7\u4e70\u6b66\u5668\u00b7\u53d8\u8eabBoss\uff01\u2694\ufe0f","color":"#b43228"}]};
+const FALLBACK_MANIFEST={"title":"Thawpaw Games","games":[{"id":"moonstone-quest","name":"\u732b\u6b66\u58eb\u5927\u5192\u9669","file":"moonstone-quest.html","icon":"moonstone","description":"\u732b\u54aa\u5b66\u5f92\u6df1\u5165\u5730\u4e0b10\u5c42\uff0c\u5bfb\u627e\u4f20\u8bf4\u4e2d\u7684\u6708\u4eae\u77f3 \ud83d\udd2e","color":"#4488ff"},{"id":"snake","name":"Snake Game","file":"snake.html","icon":"snake","description":"Classic snake with shops, banks, and backpacks!","color":"#4caf50"},{"id":"sword-master","name":"\u5c11\u5e74\u5251\u5ba2\u95ef\u6c5f\u6e56","file":"sword-master.html","icon":"sword","description":"\u5c11\u5e74\u5251\u5ba2\u6797\u98ce\u95ef\u5e99\u5b87\uff0c\u516d\u6ce2Boss\u6311\u6218\u00b7\u65e0\u9650\u5173\u5361\u00b7\u4e70\u6b66\u5668\u00b7\u53d8\u8eabBoss\uff01\u2694\ufe0f","color":"#b43228"},{"id":"minesweeper","name":"\u626b\u96f7","file":"minesweeper.html","icon":"mine","description":"\u7ecf\u5178\u626b\u96f7 \u00b7 \u9f20\u6807\u5de6\u952e\u7ffb\u683c \u00b7 \u53f3\u952e\u6807\u65d7 \u00b7 \u7b11\u8138\u91cd\u7f6e \ud83d\udca3","color":"#3a5a85"}]};
 let manifest=FALLBACK_MANIFEST;
 (async function(){
   try{const ctrl=new AbortController();const tid=setTimeout(()=>ctrl.abort(),3000);const r=await fetch('manifest.json',{signal:ctrl.signal});clearTimeout(tid);const m=await r.json();if(m&&m.games&&m.games.length)manifest=m}
