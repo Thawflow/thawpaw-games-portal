@@ -13,9 +13,10 @@
  */
 
 var cloudSync = (function() {
+  // 注意：tpg-hq.icepaw.workers.dev 的 AAAA 记录被 DNS 污染（指向非 CF 网段），
+  // 实测 100% 不可达 → 只用自定义域名；CF 橙云代理本身冷启动随机 3-35s，靠重试扛
   var BACKENDS = [
-    'https://tpg-hq.icepaw.workers.dev',   // 直连稳定
-    'https://tpg-hq.thawflow.com'          // 自定义域名（走 CF 代理，POST 偶发挂起）
+    'https://tpg-hq.thawflow.com'
   ];
   var BACKEND = BACKENDS[0];
   var AUTO_SAVE_DELAY = 5000; // 5s debounce
@@ -36,35 +37,26 @@ var cloudSync = (function() {
   }
 
   function api(path, method, body) {
-    // 双域名竞速 + 3 次重试：自定义域名走 CF 橙云代理，实测 POST 约 40% 挂起；
-    // workers.dev 直连稳定 → 谁先回用谁（沙坑站同款修法）
+    // CF Worker 冷启动实测随机 3-35s（/test 这种不碰 KV 的路由也一样挂），
+    // 所以：超时放宽到 40s，失败重试 2 次（总预算 ~2 分钟），单域名串行重试。
     var attempt = 0;
     function tryOnce() {
       var ctl = new AbortController();
-      var timer = setTimeout(function() { ctl.abort(); }, 8000);
-      var ps = BACKENDS.map(function(base) {
-        var opts = { method: method, headers: { 'Content-Type': 'application/json' }, signal: ctl.signal };
-        if (body) opts.body = JSON.stringify(body);
-        return fetch(base + '/' + path, opts)
-          .then(function(r) { return r.json(); })
-          .then(function(j) { return { ok: true, j: j }; })
-          .catch(function(e) { return { ok: false, e: e }; });
-      });
-      return new Promise(function(resolve) {
-        var done = false;
-        ps.forEach(function(p) {
-          p.then(function(v) { if (!done && v && v.ok) { done = true; resolve(v.j); } });
+      var timer = setTimeout(function() { ctl.abort(); }, 40000);
+      var base = BACKENDS[0];
+      var opts = { method: method, headers: { 'Content-Type': 'application/json' }, signal: ctl.signal };
+      if (body) opts.body = JSON.stringify(body);
+      return fetch(base + '/' + path, opts)
+        .then(function(r) { return r.json(); })
+        .then(function(j) { clearTimeout(timer); return j; })
+        .catch(function(e) {
+          clearTimeout(timer);
+          if (attempt < 2) {
+            attempt++;
+            return new Promise(function(r) { setTimeout(r, 1000 * attempt); }).then(tryOnce);
+          }
+          return { ok: false, error: '网络错误: ' + (e && e.name === 'AbortError' ? '请求超时' : (e.message || e)) };
         });
-        setTimeout(function() { if (!done) { done = true; resolve(null); } }, 8000);
-      }).then(function(j) {
-        clearTimeout(timer);
-        if (j) return j;
-        if (attempt < 2) {
-          attempt++;
-          return new Promise(function(r) { setTimeout(r, 500 * attempt); }).then(tryOnce);
-        }
-        return { ok: false, error: '网络错误: 无法连接到服务器' };
-      });
     }
     return tryOnce();
   }
