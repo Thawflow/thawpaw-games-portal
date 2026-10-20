@@ -13,7 +13,11 @@
  */
 
 var cloudSync = (function() {
-  var BACKEND = 'https://tpg-hq.thawflow.com';
+  var BACKENDS = [
+    'https://tpg-hq.icepaw.workers.dev',   // 直连稳定
+    'https://tpg-hq.thawflow.com'          // 自定义域名（走 CF 代理，POST 偶发挂起）
+  ];
+  var BACKEND = BACKENDS[0];
   var AUTO_SAVE_DELAY = 5000; // 5s debounce
   var autoSaveTimer = null;
 
@@ -32,24 +36,37 @@ var cloudSync = (function() {
   }
 
   function api(path, method, body) {
-    var url = BACKEND + '/' + path;
-    var opts = {
-      method: method,
-      headers: { 'Content-Type': 'application/json' },
-      signal: null
-    };
-    if (body) opts.body = JSON.stringify(body);
-    // Timeout via AbortController
-    var ctrl = new AbortController();
-    opts.signal = ctrl.signal;
-    var timer = setTimeout(function() { ctrl.abort(); }, 8000);
-    return fetch(url, opts).then(function(r) {
-      clearTimeout(timer);
-      return r.json();
-    }).catch(function(e) {
-      clearTimeout(timer);
-      return { ok: false, error: '网络错误: ' + (e.message || e) };
-    });
+    // 双域名竞速 + 3 次重试：自定义域名走 CF 橙云代理，实测 POST 约 40% 挂起；
+    // workers.dev 直连稳定 → 谁先回用谁（沙坑站同款修法）
+    var attempt = 0;
+    function tryOnce() {
+      var ctl = new AbortController();
+      var timer = setTimeout(function() { ctl.abort(); }, 8000);
+      var ps = BACKENDS.map(function(base) {
+        var opts = { method: method, headers: { 'Content-Type': 'application/json' }, signal: ctl.signal };
+        if (body) opts.body = JSON.stringify(body);
+        return fetch(base + '/' + path, opts)
+          .then(function(r) { return r.json(); })
+          .then(function(j) { return { ok: true, j: j }; })
+          .catch(function(e) { return { ok: false, e: e }; });
+      });
+      return new Promise(function(resolve) {
+        var done = false;
+        ps.forEach(function(p) {
+          p.then(function(v) { if (!done && v && v.ok) { done = true; resolve(v.j); } });
+        });
+        setTimeout(function() { if (!done) { done = true; resolve(null); } }, 8000);
+      }).then(function(j) {
+        clearTimeout(timer);
+        if (j) return j;
+        if (attempt < 2) {
+          attempt++;
+          return new Promise(function(r) { setTimeout(r, 500 * attempt); }).then(tryOnce);
+        }
+        return { ok: false, error: '网络错误: 无法连接到服务器' };
+      });
+    }
+    return tryOnce();
   }
 
   function collectAllSaves() {
