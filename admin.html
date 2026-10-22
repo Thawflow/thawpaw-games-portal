@@ -1197,7 +1197,9 @@ function dateStr(){
 
 // ── Admin management ──
 function loadAdmins(){
-  apiGet('listAdmins').then(res => {
+  // 2026-10-22 冰爪（P0）：/listAdmins 原先无鉴权 → 已加 admin 闸，
+  // 必须带 session 身份（与本页其余 admin 端点同款：id + nickname）。
+  apiGet('listAdmins', { id: session.id, nickname: session.nickname }).then(res => {
     if(!res.ok) return;
     const admins = res.admins || [];
     const el = document.getElementById('admin-list');
