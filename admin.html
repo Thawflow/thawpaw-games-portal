@@ -926,12 +926,19 @@ function showDashboard(){
 
   // 🔔 启动反馈监控（自动弹通知）
   startFeedbackWatcher();
+
+  // 💬 聊天室桌面通知：**不自动启动** —— 猴哥 11-05 原话「当聊天室网页在打开状态的时候」
+  //    ⇒ 由 switchTab('chatroom') 触发；此刻若已在聊天室面板则立即启。
+  if(document.getElementById('panel-chatroom').classList.contains('active')){
+    startChatroomNotifier();
+  }
 }
 
 function hqLogout(){
   localStorage.removeItem('tpgHqSession');
   session = null; isSuperAdmin = false;
   stopFeedbackWatcher();
+  stopChatroomNotifier();
   document.getElementById('dashboard').classList.remove('active');
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('login-id-input').value = '';
@@ -953,6 +960,8 @@ function switchTab(name){
     }
     loadChatSendMembers();
   }
+  // 💬 聊天室桌面通知：**只在聊天室页面打开时**轮询（猴哥 11-05 原话「当聊天室网页在打开状态的时候」）
+  if(name === 'chatroom') startChatroomNotifier(); else stopChatroomNotifier();
 }
 
 // Sub-tab switching within chatroom panel
@@ -1827,6 +1836,144 @@ function notifyNewFeedback(items){
   // 同时更新页面标题（吸引注意）
   const original = document.title.replace(/^\[\d+\]\s*/, '');
   document.title = '[' + count + '] ' + original;
+}
+
+// ════════════════════════════════════════
+//  💬 聊天室桌面通知（11-05 猴哥派 · 5 分钟一轮）
+//  网页开着时每 5 分钟查一次聊天室，有新消息弹浏览器桌面通知
+// ════════════════════════════════════════
+const CHAT_POLL_INTERVAL = 300000; // 5 分钟（猴哥指定）
+const CHAT_SEEN_KEY = 'tpgChatSeenIds';
+const CHAT_POLL_TIMEOUT = 45000;  // Worker 慢窗口实测 16-66s ⇒ 给 45s，超时即放弃本轮
+const CHAT_POLL_MAX_LIMIT = 50;   // chatroom/history 单页上限 50
+let chatPollTimer = null;
+let chatPollBusy = false;         // 防重入：上一轮没回就不发下一轮
+let chatPollStarted = false;      // 轮询是否已启动
+let chatBaselineReady = false;    // 基线是否**成功建过** —— 未建成功前一律不弹（防历史消息齐炸）
+
+// 启动聊天室桌面通知轮询（幂等）
+function startChatroomNotifier(){
+  if(chatPollTimer) return;   // 已在跑（幂等）
+  chatPollStarted = true;
+
+  // 请求通知权限（已授权/不支持都静默继续 —— 不打断页面）
+  if('Notification' in window && Notification.permission === 'default'){
+    try{ Notification.requestPermission(); }catch(e){}
+  }
+
+  // 首轮：只建基线（把当前消息全标为已读），**不弹历史消息**
+  pollChatroom(true);
+
+  chatPollTimer = setInterval(function(){ pollChatroom(false); }, CHAT_POLL_INTERVAL);
+  console.log('[TPG] 聊天室桌面通知已启动，每 5 分钟检查一次');
+}
+
+function stopChatroomNotifier(){
+  if(chatPollTimer){
+    clearInterval(chatPollTimer);
+    chatPollTimer = null;
+    console.log('[TPG] 聊天室桌面通知已停止');
+  }
+  // ⚠️ **不清 localStorage 基线**（CHAT_SEEN_KEY）—— 否则下次打开聊天室面板会把
+  //    上次已看过的旧消息当「新消息」重弹一遍。基线只在轮询成功时更新。
+}
+
+// 拉聊天室消息 → 比对基线 → 对新消息弹通知
+function pollChatroom(silentBaseline){
+  if(!session) return Promise.resolve();          // 未登录
+  if(chatPollBusy) return Promise.resolve();      // 上一轮还在飞（Worker 慢）⇒ 跳过本轮，不堆积
+  chatPollBusy = true;
+
+  var url = 'chatroom/history'
+    + '?id=' + encodeURIComponent(session.id)
+    + '&nickname=' + encodeURIComponent(session.nickname)
+    + '&limit=' + CHAT_POLL_MAX_LIMIT
+    + '&offset=0'
+    + '&filter=all';
+
+  return apiGet(url, null, CHAT_POLL_TIMEOUT).then(function(res){
+    chatPollBusy = false;
+    if(!res || !res.ok || !res.messages) return;
+
+    var messages = res.messages || [];
+    // 按时间倒序（seq 不可靠 —— counter 重置后会乱序，一律以 timestamp 为准）
+    messages.sort(function(a,b){ return new Date(b.timestamp) - new Date(a.timestamp); });
+
+    var seenRaw = localStorage.getItem(CHAT_SEEN_KEY) || '';
+    var seen = new Set(seenRaw.split(/\s+/).filter(Boolean));
+
+    var allIds = [];
+    var fresh = [];
+    for(var i = 0; i < messages.length; i++){
+      var m = messages[i];
+      var id = m.msg_id || m.id;
+      if(!id) continue;
+      allIds.push(id);
+      // 基线已存在 → 不是新消息
+      if(seen.has(id)) continue;
+      // 首轮（建基线）→ 只记不弹
+      if(silentBaseline) continue;
+      fresh.push(m);
+    }
+
+    // 更新基线（无论首轮还是常规轮）
+    localStorage.setItem(CHAT_SEEN_KEY, allIds.join(' '));
+
+    // 首轮成功 ⇒ 基线就绪，之后才允许弹新消息
+    if(silentBaseline){ chatBaselineReady = true; return; }
+
+    // ⚠️ 基线从未成功建立（首轮超时/失败）⇒ 本轮**不弹** ——
+    //    否则会把 50 条历史消息全当新消息齐炸。只补基线，下轮再弹。
+    if(!chatBaselineReady){
+      console.log('[TPG] 聊天室基线未就绪，本轮只补基线不弹通知');
+      chatBaselineReady = true;
+      return;
+    }
+
+    if(fresh.length === 0) return;
+    notifyNewChatMessages(fresh);
+  }).catch(function(){
+    // 超时/失败 ⇒ 不弹、不清基线（基线保持上轮状态，下轮继续比对）
+    chatPollBusy = false;
+  });
+}
+
+// 弹浏览器桌面通知（照抄反馈通知的既有模式：SVG icon + tag + onclick 切 tab + 5s 自动关）
+function notifyNewChatMessages(items){
+  if(!('Notification' in window) || Notification.permission !== 'granted') return;
+  if(!items || items.length === 0) return;
+
+  var count = items.length;
+  var first = items[0];
+  var sender = first.sender_name || first.sender || '匿名成员';
+  var preview = String(first.content || '').slice(0, 80);
+
+  var title, body;
+  if(count === 1){
+    title = '💬 聊天室 · ' + sender;
+    body = preview || '(空消息)';
+  } else {
+    title = '💬 聊天室 · ' + count + ' 条新消息';
+    body = sender + '：' + (preview || '(空消息)') + '\n（还有 ' + (count - 1) + ' 条…）';
+  }
+
+  try{
+    var icon = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">💬</text></svg>';
+    var n = new Notification(title, {
+      body: body,
+      icon: icon,
+      tag: 'tpg-chatroom',
+      badge: icon
+    });
+    n.onclick = function(){
+      window.focus();
+      switchTab('chatroom');
+      n.close();
+    };
+    setTimeout(function(){ n.close(); }, 8000);
+  }catch(e){
+    console.warn('Chatroom Notification error:', e);
+  }
 }
 
 // 简单的提示音（用 Web Audio API，不需要音频文件）
