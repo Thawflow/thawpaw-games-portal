@@ -166,7 +166,7 @@ body{
 .panel{display:none}
 .panel.active{display:block}
 
-/* Chat reply button (2026-08-29 猴哥需求) */
+/* Chat reply button (2026-08-29 Tree 需求) */
 .chat-reply-btn{border:none;background:transparent;color:var(--dim);cursor:pointer;font-size:.72rem;padding:2px 8px;border-radius:4px;transition:color .2s,background .2s;flex-shrink:0}
 .chat-reply-btn:hover{color:var(--accent);background:var(--accent)20}
 
@@ -532,7 +532,7 @@ tr:hover td{background:var(--card2)}
 
       <!-- Sandbox training banner · 2026-08-29 定名「沙坑训练场」（原 Python 课堂, 2026-08-28 如意×冰爪） -->
       <div style="margin-bottom:1rem;padding:.7rem 1.2rem;border:1px solid var(--accent);border-left:4px solid var(--accent);border-radius:var(--radius);background:var(--card2);font-size:.88rem;line-height:1.5">
-        🏖️ <strong>每日 14:00-14:30 · 沙坑示范课（如意×冰爪）</strong> — 当周课程示范 + 跟做小练习：猴哥×苗苗的进度和卡点都在这碰，做完当天给反馈。路过随时插话 🐾
+        🏖️ <strong>每日 14:00-14:30 · 沙坑示范课（如意×冰爪）</strong> — 当周课程示范 + 跟做小练习：Tree×ThawPaw 的进度和卡点都在这碰，做完当天给反馈。路过随时插话 🐾
       </div>
 
       <!-- Sub-panel: History -->
@@ -927,7 +927,7 @@ function showDashboard(){
   // 🔔 启动反馈监控（自动弹通知）
   startFeedbackWatcher();
 
-  // 💬 聊天室桌面通知：**不自动启动** —— 猴哥 11-05 原话「当聊天室网页在打开状态的时候」
+  // 💬 聊天室桌面通知：**不自动启动** —— Tree 11-05 原话「当聊天室网页在打开状态的时候」
   //    ⇒ 由 switchTab('chatroom') 触发；此刻若已在聊天室面板则立即启。
   if(document.getElementById('panel-chatroom').classList.contains('active')){
     startChatroomNotifier();
@@ -960,7 +960,7 @@ function switchTab(name){
     }
     loadChatSendMembers();
   }
-  // 💬 聊天室桌面通知：**只在聊天室页面打开时**轮询（猴哥 11-05 原话「当聊天室网页在打开状态的时候」）
+  // 💬 聊天室桌面通知：**只在聊天室页面打开时**轮询（Tree 11-05 原话「当聊天室网页在打开状态的时候」）
   if(name === 'chatroom') startChatroomNotifier(); else stopChatroomNotifier();
 }
 
@@ -1523,7 +1523,7 @@ function loadChatHistory(page){
   });
 }
 
-// ── Chat reply button (2026-08-29 猴哥需求) ──
+// ── Chat reply button (2026-08-29 Tree 需求) ──
 function replyToMessage(senderId, senderName){
   var sel = document.getElementById('chat-send-channel');
   var target = 'dm:' + senderId;
@@ -1839,10 +1839,10 @@ function notifyNewFeedback(items){
 }
 
 // ════════════════════════════════════════
-//  💬 聊天室桌面通知（11-05 猴哥派 · 5 分钟一轮）
+//  💬 聊天室桌面通知（11-05 Tree 派 · 5 分钟一轮）
 //  网页开着时每 5 分钟查一次聊天室，有新消息弹浏览器桌面通知
 // ════════════════════════════════════════
-const CHAT_POLL_INTERVAL = 300000; // 5 分钟（猴哥指定）
+const CHAT_POLL_INTERVAL = 300000; // 5 分钟（Tree 指定）
 const CHAT_SEEN_KEY = 'tpgChatSeenIds';
 const CHAT_POLL_TIMEOUT = 45000;  // Worker 慢窗口实测 16-66s ⇒ 给 45s，超时即放弃本轮
 const CHAT_POLL_MAX_LIMIT = 50;   // chatroom/history 单页上限 50
