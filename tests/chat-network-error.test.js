@@ -13,6 +13,40 @@ const assert = require('assert');
 
 const ADMIN = path.join(__dirname, '..', 'admin.html');
 const html = fs.readFileSync(ADMIN, 'utf8');
+const REPO_ROOT = path.join(__dirname, '..');
+
+// ⚠️ 2026-11-12（如意 23:35 指正 · owner=冰爪）：**扫描面 = 全站入库文本文件**，不是 admin.html 单文件。
+//   取数用 `git ls-files`（只列**入库**文件 ⇒ 本地临时文件/未跟踪文件不会混进来），
+//   退化到 fs 遍历（不在 git 仓里也能跑）。
+const TEXT_EXT = new Set(['.html', '.js', '.md', '.json', '.webmanifest', '.xml', '.txt']);
+
+function listRepoTextFiles(){
+  let names = [];
+  try {
+    const out = require('child_process')
+      .execFileSync('git', ['ls-files'], { cwd: REPO_ROOT, encoding: 'utf8' });
+    names = out.split('\n').filter(Boolean);
+  } catch(e){
+    names = [];
+  }
+  if(!names.length){
+    const walk = (dir, prefix='') => {
+      for(const e of fs.readdirSync(dir, { withFileTypes: true })){
+        if(e.name === '.git' || e.name === 'node_modules') continue;
+        const rel = prefix ? prefix + '/' + e.name : e.name;
+        const full = path.join(dir, e.name);
+        if(e.isDirectory()) walk(full, rel);
+        else names.push(rel);
+      }
+    };
+    walk(REPO_ROOT);
+  }
+  return names.filter(f => TEXT_EXT.has(path.extname(f).toLowerCase()));
+}
+
+function readRepoFile(rel){
+  return fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');
+}
 
 let pass = 0, fail = 0;
 function t(name, fn){
@@ -230,9 +264,18 @@ t('CHAT_POLL_TIMEOUT 仍是 45000', ()=>{
 console.log('\n【回归 · 隐私红线没被改坏】');
 
 // ★ 隐私样本用 Unicode 转义写，**明文不入仓**（公开仓红线）。
+// ⚠️ 2026-11-12（如意 23:35 指正 · owner=冰爪）：**扫描面必须覆盖全站**，只扫 admin.html 一个文件
+//   ⇒ 断言「公开仓无真名」实为**假覆盖**（首页 3 处学员真名当时正在线上，测试却全绿）。
+//   ⇒ 拆成两类：**家庭成员真名 = 硬红线**（失败）；**作者署名 = 待 owner 拍板**（只报告不失败）。
+// ⚠️⚠️ 同轮**第二个假绿**：转义样本本身写错了 —— 学员名的第二个字被写成 U+82D3（=「苓」）、
+//   家长真名的末字被写成 U+794E（=「祎」）⇒ **正则永远匹配不到真名**，
+//   断言「无真名」必然为真 = **恒真断言**。⇒ 样本必须**自证**（见下方 SAMPLE_SELFTEST）。
+//   （本注释刻意不写任何家族真名明文 —— 否则本测试会把自己判红。）
 const REAL_NAME_PATTERN = new RegExp(
-  ['\u82d7\u82d3','\u7334\u54e5','\u8303\u5b9d','\u738b\u6770\u794e','\u738b\u7ef4\u6eaa','\u535a\u6587'].join('|')
+  ['\u82d7\u82d7','\u7334\u54e5','\u738b\u6770\u797a','\u738b\u7ef4\u6eaa','\u535a\u6587'].join('|')
 );
+// 非家族名单的笔名/署名 —— 改动影响品牌与 SEO = owner 设计意图 ⇒ 报出来但**不判失败**（等拍板）。
+const PENDING_CREDIT_PATTERN = new RegExp(['\u8303\u5b9d'].join('|'));
 // 真实 8 位 ID 样本同样用转义写，明文不入仓。
 //   四个样本全部只以 \uXXXX 转义形式出现（原始明文见私仓版本）
 const REAL_ID_SAMPLES = [
@@ -242,9 +285,69 @@ const REAL_ID_SAMPLES = [
   '\u0032\u0030\u0032\u0036\u0030\u0036\u0032\u0037'
 ];
 
-t('公开仓无家庭成员真名', ()=>{
+t('公开仓无家庭成员真名', () => {
   const m = html.match(REAL_NAME_PATTERN);
   assert(!m, `残留真名: ${m && m.join(',')}`);
+});
+
+// ⚠️ 2026-11-12（如意 23:35 指正 · owner=冰爪）：**全站扫描面** —— 断言「公开仓无真名」
+//   必须覆盖**每个**入库的 html/js/md，只扫 admin.html = 假覆盖（首页真名当时在线却全绿）。
+//   判据 = 扫描面清单与 `git ls-files` 的文本类文件**逐条对齐**（漏一个文件 = 断言失效）。
+t('隐私扫描覆盖全站文本文件（不是只扫 admin.html）', () => {
+  const files = listRepoTextFiles();
+  assert(files.length >= 10, `扫到的文本文件太少（${files.length}）⇒ 扫描面可能没铺开`);
+  assert(files.includes('index.html'), '扫描面漏了 index.html');
+  assert(files.includes('admin.html'), '扫描面漏了 admin.html');
+  assert(files.includes('README.md'), '扫描面漏了 README.md');
+});
+
+// ⚠️ 2026-11-12（owner=冰爪 自查）：**样本自证** —— 转义样本写错 ⇒ 正则恒不匹配 ⇒
+//   「无真名」断言恒真（假绿）。判据 = 每个样本必须**能被自己解码回目标真名**，
+//   且**能命中一个含真名的样本串**（否则样本写错也照样绿）。
+t('隐私样本转义自证（样本写错会导致恒真断言 = 假绿）', () => {
+  // 目标真名以「码点」形式给出（不是明文），样本 = 码点拼出来的字符串
+  const CASES = [
+    { label: 'student-name', codepoints: [0x82d7, 0x82d7] },
+    { label: 'parent-alias',  codepoints: [0x7334, 0x54e5] },
+    { label: 'parent-real-1', codepoints: [0x738b, 0x6770, 0x797a] },
+    { label: 'parent-real-2', codepoints: [0x738b, 0x7ef4, 0x6eaa] },
+    { label: 'parent-mom',    codepoints: [0x535a, 0x6587] },
+    { label: 'pending-credit',codepoints: [0x8303, 0x5b9d] },
+  ];
+  for(const c of CASES){
+    const target = c.codepoints.map(x => String.fromCharCode(x)).join('');
+    // ① 样本正则必须能命中「该真名本身」
+    const re = new RegExp(c.codepoints.map(x => '\\u' + x.toString(16)).join(''));
+    assert(re.test(target), `样本 ${c.label} 的转义正则命中不了它自己`);
+    // ② 样本正则必须能命中「含该真名的串」（模拟真实文件里的上下文）
+    assert(re.test('prefix-' + target + '-suffix'), `样本 ${c.label} 的转义正则命中不了上下文串`);
+    // ③ 全站扫描用的总正则必须覆盖该样本
+    assert(REAL_NAME_PATTERN.test(target) || PENDING_CREDIT_PATTERN.test(target),
+      `样本 ${c.label} 没被任何扫描正则覆盖`);
+  }
+});
+
+t('全站文本文件无家庭成员真名', () => {
+  const hits = [];
+  for (const f of listRepoTextFiles()) {
+    const txt = readRepoFile(f);
+    const m = txt.match(REAL_NAME_PATTERN);
+    if (m) hits.push(`${f}: ${[...new Set(m)].join(',')}`);
+  }
+  assert(!hits.length, `全站残留真名:\n    ${hits.join('\n    ')}`);
+});
+
+// 作者署名 = owner 设计意图（品牌/SEO）⇒ **只报告、不判失败**（已上报 owner 拍板）。
+t('（报告项）非家族名单的笔名署名待 owner 拍板 —— 不判失败', () => {
+  const hits = [];
+  for (const f of listRepoTextFiles()) {
+    const txt = readRepoFile(f);
+    const m = txt.match(PENDING_CREDIT_PATTERN);
+    if (m) hits.push(`${f}: ${[...new Set(m)].join(',')}`);
+  }
+  if (hits.length) {
+    console.log(`     ℹ️ 待 owner 拍板的署名（不判失败）: ${hits.join(' | ')}`);
+  }
 });
 
 t('公开仓无真实 8 位 ID（SUPER_ADMIN_ID 等硬编码）', ()=>{
