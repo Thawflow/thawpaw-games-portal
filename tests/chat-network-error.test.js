@@ -271,11 +271,15 @@ console.log('\n【回归 · 隐私红线没被改坏】');
 //   家长真名的末字被写成 U+794E（=「祎」）⇒ **正则永远匹配不到真名**，
 //   断言「无真名」必然为真 = **恒真断言**。⇒ 样本必须**自证**（见下方 SAMPLE_SELFTEST）。
 //   （本注释刻意不写任何家族真名明文 —— 否则本测试会把自己判红。）
+// ⚠️ 2026-11-12（如意 00:26 勘误 · owner=冰爪）：某笔名**不是**外部署名 —— 实测家族档
+//   （members/icepaw/moment/2026-08-23）它是**学员的弟弟**，属家人真名 ⇒ 升级为硬红线。
+//   ⚠️ 教训（如意自述同款）：凡涉「谁是真名/谁不是」，先 grep 家族档再写。
+//   （本注释刻意不写任何家族真名明文 —— 否则本测试会把自己判红。）
 const REAL_NAME_PATTERN = new RegExp(
-  ['\u82d7\u82d7','\u7334\u54e5','\u738b\u6770\u797a','\u738b\u7ef4\u6eaa','\u535a\u6587'].join('|')
+  ['\u82d7\u82d7','\u7334\u54e5','\u738b\u6770\u797a','\u738b\u7ef4\u6eaa','\u535a\u6587','\u8303\u5b9d'].join('|')
 );
-// 非家族名单的笔名/署名 —— 改动影响品牌与 SEO = owner 设计意图 ⇒ 报出来但**不判失败**（等拍板）。
-const PENDING_CREDIT_PATTERN = new RegExp(['\u8303\u5b9d'].join('|'));
+// 备用：仅当某个字面被确认**不是**家人真名时，才放进这里（只报告、不判失败）。
+const PENDING_CREDIT_PATTERN = new RegExp(['\u536b\u5b9d'].join('|'));
 // 真实 8 位 ID 样本同样用转义写，明文不入仓。
 //   四个样本全部只以 \uXXXX 转义形式出现（原始明文见私仓版本）
 const REAL_ID_SAMPLES = [
@@ -312,7 +316,8 @@ t('隐私样本转义自证（样本写错会导致恒真断言 = 假绿）', ()
     { label: 'parent-real-1', codepoints: [0x738b, 0x6770, 0x797a] },
     { label: 'parent-real-2', codepoints: [0x738b, 0x7ef4, 0x6eaa] },
     { label: 'parent-mom',    codepoints: [0x535a, 0x6587] },
-    { label: 'pending-credit',codepoints: [0x8303, 0x5b9d] },
+    { label: 'sibling-name', codepoints: [0x8303, 0x5b9d] },
+    { label: 'pending-credit',codepoints: [0x536b, 0x5b9d] },
   ];
   for(const c of CASES){
     const target = c.codepoints.map(x => String.fromCharCode(x)).join('');
