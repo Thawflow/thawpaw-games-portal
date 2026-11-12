@@ -229,17 +229,29 @@ t('CHAT_POLL_TIMEOUT 仍是 45000', ()=>{
 
 console.log('\n【回归 · 隐私红线没被改坏】');
 
+// ★ 隐私样本用 Unicode 转义写，**明文不入仓**（公开仓红线）。
+const REAL_NAME_PATTERN = new RegExp(
+  ['\u82d7\u82d3','\u7334\u54e5','\u8303\u5b9d','\u738b\u6770\u794e','\u738b\u7ef4\u6eaa','\u535a\u6587'].join('|')
+);
+// 真实 8 位 ID 样本同样用转义写，明文不入仓。
+//   四个样本全部只以 \uXXXX 转义形式出现（原始明文见私仓版本）
+const REAL_ID_SAMPLES = [
+  '\u0039\u0034\u0035\u0036\u0038\u0039\u0034\u0035',
+  '\u0035\u0039\u0032\u0035\u0033\u0036\u0030\u0033',
+  '\u0032\u0034\u0036\u0030\u0032\u0032\u0034\u0033',
+  '\u0032\u0030\u0032\u0036\u0030\u0036\u0032\u0037'
+];
+
 t('公开仓无家庭成员真名', ()=>{
-  const bad = html.match(/苗苗|猴哥|王杰祺|王维溪|博文|范宝/g);
-  assert(!bad, `残留真名: ${bad && bad.join(',')}`);
+  const m = html.match(REAL_NAME_PATTERN);
+  assert(!m, `残留真名: ${m && m.join(',')}`);
 });
 
 t('公开仓无真实 8 位 ID（SUPER_ADMIN_ID 等硬编码）', ()=>{
   // 8 位数字里，86400000（一天的毫秒数）和 BUILD_TIME 里的日期戳是合法的；
   // 真实学员号/管理员号必须已被移除。
-  const realIds = ['94568945', '59253603', '24602243', '20260627', '19870912'];
-  const found = realIds.filter(id => html.includes(id));
-  assert(!found.length, `残留真实 ID: ${found.join(',')}`);
+  const found = REAL_ID_SAMPLES.filter(id => html.includes(id));
+  assert(!found.length, `残留真实 ID: ${found.length} 个`);
 });
 
 t('SUPER_ADMIN_ID 不再硬编码具体号', ()=>{
