@@ -630,8 +630,22 @@ tr:hover td{background:var(--card2)}
 //  TPG HQ Admin Frontend
 // ============================
 
-const SUPER_ADMIN_ID = '94568945';
-const SUPER_ADMIN_ID_2 = '59253603'; // 超级管理员2: 范宝
+// 2026-11-12（冰爪）：超级管理员 ID **不再硬编码**（公开仓红线：真实 8 位号不得入库）。
+// 角色改由后端 `verify` 返回（res.role，见 worker/index.js L557）；后端不可达时，
+// 降级路径用上次登录缓存在 localStorage 的 role，不再靠硬编码号比对。
+const SUPER_ADMIN_ROLE = 'super';
+
+// 取某个 ID 上次登录缓存的角色（降级路径用）。
+// 数据来源只有本机 localStorage —— 后端不可达时唯一还剩的信号。
+function cachedSessionRole(id){
+  try{
+    var s = JSON.parse(localStorage.getItem('tpgHqSession') || '{}');
+    if(s && String(s.id) === String(id) && s.role) return s.role;
+    var players = JSON.parse(localStorage.getItem('thawpawPlayers') || '{}');
+    if(players[id] && players[id].role) return players[id].role;
+  }catch(e){}
+  return null;
+}
 const CF_BACKEND_KEY = 'tpgCfBackendUrl';
 const DEFAULT_CF_URL = 'https://tpg-hq.thawflow.com'; // 自定义域名（中国可达）；workers.dev 可在 ⚙️ 手动切换作应急备用
 let backendUrl = localStorage.getItem(CF_BACKEND_KEY) || DEFAULT_CF_URL;
@@ -724,7 +738,14 @@ function saveBackendUrl(){
 }
 
 // ── API helpers ──
-const API_TIMEOUT = 15000; // 15 秒超时（Workers 冷启动 + PostgREST 叠加偶超 8s）
+// 2026-11-12（冰爪）：15s → 45s。
+// 实测（6 次 curl chatroom/history）：7.8s / 11.1s / 12.5s / 13.7s / 38.3s / 40.1s，
+// 纯静态路由 /chat/health 也 2.6~25s ⇒ 慢在到 Cloudflare 的 TLS 握手（cf-ray 落 LAX），
+// 不是 Worker 代码或数据量问题。15s 超时会把「慢但活着」的请求误杀成「网络错误」。
+// 45s 与 CHAT_POLL_TIMEOUT 对齐，覆盖实测 p99。
+const API_TIMEOUT = 45000;
+// 写操作（POST）保持短超时：写路径重试无幂等键 ⇒ 重试可能双发。
+const API_WRITE_TIMEOUT = 20000;
 
 function fetchWithTimeout(url, opts, ms){
   ms = ms || API_TIMEOUT;
@@ -744,20 +765,48 @@ function fetchWithRetry(url, opts, ms){
     });
 }
 
+// 2026-11-12（冰爪）：读路径自动重试 —— 慢线路下自动恢复，不让用户手点「重试」。
+// 指数退避 + 最多 2 次（总 3 次尝试）；只在网络层失败（fetch 抛错）时重试，
+// HTTP 4xx/5xx 由调用方按 res.ok 判定，不在此重试（避免放大写操作）。
+function fetchWithRetryBackoff(url, opts, ms, maxRetries){
+  maxRetries = (maxRetries === undefined) ? 2 : maxRetries;
+  var attempt = 0;
+  function run(){
+    return fetchWithTimeout(url, opts, ms).then(function(r){
+      // 服务端明确报错（4xx/5xx）→ 不重试，直接交调用方判 res.ok
+      if(r && r.status >= 400 && r.status < 500) return r;
+      if(r && r.status >= 500) throw new Error('HTTP ' + r.status);
+      return r;
+    }).catch(function(err){
+      if(attempt >= maxRetries) throw err;
+      attempt++;
+      var delay = 500 * Math.pow(2, attempt - 1); // 500ms → 1000ms
+      return new Promise(function(resolve){ setTimeout(resolve, delay); }).then(run);
+    });
+  }
+  return run();
+}
+
 function apiGet(fnName, params, ms){
   const url = getBackendBase() + '/' + fnName + (params ? '?' + new URLSearchParams(params).toString() : '');
   // lookup and verify are critical for login — auto-retry on failure
   if(fnName === 'lookup' || fnName === 'verify'){
     return fetchWithRetry(url, {}, ms).then(r => r.json());
   }
-  return fetchWithTimeout(url, {}, ms).then(r => r.json());
+  // 2026-11-12（冰爪）：所有 GET 读路径改走带退避的自动重试。
+  // 背景：到 Cloudflare 的 TLS 握手实测 2.7~14.2s（cf-ray 落 LAX），慢线路下
+  // 单次请求会随机失败 ⇒ 用户被迫手点「重试」。这里让失败自动恢复。
+  return fetchWithRetryBackoff(url, {}, ms).then(r => r.json());
 }
 function apiPost(fnName, data, ms){
+  // 2026-11-12（冰爪）：写路径**不自动重试**（后端无幂等键，重试可能双发 ——
+  // 见 11-12 小马双发事故报告）。写超时收短到 20s，宁可明确报错让人重按，
+  // 也不要后台悄悄重发造成重复消息。
   return fetchWithTimeout(getBackendBase() + '/' + fnName, {
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify(data)
-  }, ms).then(r => r.json());
+  }, ms || API_WRITE_TIMEOUT).then(r => r.json());
 }
 
 // ── Login flow ──
@@ -799,8 +848,8 @@ function hqLogin(){
     const players = JSON.parse(localStorage.getItem('thawpawPlayers') || '{}');
     if(players[id]){
       showNickStep();
-    } else if(id === SUPER_ADMIN_ID || id === SUPER_ADMIN_ID_2){
-      // 超级管理员即使后端不可达也允许本地登录
+    } else if(cachedSessionRole(id) === SUPER_ADMIN_ROLE){
+      // 超级管理员即使后端不可达也允许本地登录（role 取自上次登录缓存，不靠硬编码 ID）
       showNickStep();
     } else {
       showLoginError('网络连接超时，请检查网络后重试');
@@ -837,8 +886,7 @@ function confirmNick(){
       const players = JSON.parse(localStorage.getItem('thawpawPlayers') || '{}');
       if(players[pendingId] && players[pendingId].nickname === nick){
         // Local match
-        let role = 'player';
-        if(pendingId === SUPER_ADMIN_ID || pendingId === SUPER_ADMIN_ID_2) role = 'super';
+        let role = cachedSessionRole(pendingId) || 'player';
         session = { id: pendingId, nickname: nick, role: role }; isSuperAdmin = (session.role === "super");
         localStorage.setItem('tpgHqSession', JSON.stringify(session));
         document.getElementById('nick-step').classList.remove('show');
@@ -851,8 +899,7 @@ function confirmNick(){
     // Network error — localStorage fallback
     const players = JSON.parse(localStorage.getItem('thawpawPlayers') || '{}');
     if(players[pendingId] && players[pendingId].nickname === nick){
-      let role = 'player';
-      if(pendingId === SUPER_ADMIN_ID || pendingId === SUPER_ADMIN_ID_2) role = 'super';
+      let role = cachedSessionRole(pendingId) || 'player';
       session = { id: pendingId, nickname: nick, role: role }; isSuperAdmin = (session.role === "super");
       localStorage.setItem('tpgHqSession', JSON.stringify(session));
       document.getElementById('nick-step').classList.remove('show');
@@ -915,7 +962,15 @@ function showDashboard(){
   loadStats();
   loadActivity();
   loadFeedback();
-  if(isAdmin) { loadAdmins(); loadMail(); loadChatroomMembers(); loadChatHistory(1); }
+  // 2026-11-12（冰爪）：原来 4 个请求同时打出去（loadAdmins/loadMail/loadChatroomMembers/loadChatHistory）。
+  // 到 Cloudflare 的 TLS 握手实测会抖 2.7~14.2s ⇒ 并发越多越容易整批超时（用户看到「网络错误」）。
+  // 改成错峰：聊天室先起（用户最要看的就是它），其余按 400ms 间隔依次排队。
+  if(isAdmin) {
+    loadChatHistory(1);
+    setTimeout(loadChatroomMembers, 400);
+    setTimeout(loadAdmins, 800);
+    setTimeout(loadMail, 1200);
+  }
 
   // 沙坑独立站链接携带玩家 ID（?tpg=）——跨域出勤统计靠它识别学员
   try {
@@ -1243,7 +1298,7 @@ function addSubAdmin(){
   const nick = document.getElementById('new-admin-nick').value.trim();
   if(!id || !nick){ alert('请输入 ID 和昵称'); return; }
   if(!/^\d{8}$/.test(id)){ alert('ID 必须是 8 位数字'); return; }
-  if(id === SUPER_ADMIN_ID || id === SUPER_ADMIN_ID_2){ alert('不能添加超级管理员为副管理员'); return; }
+  if(cachedSessionRole(id) === SUPER_ADMIN_ROLE){ alert('不能添加超级管理员为副管理员'); return; }
 
   apiPost('addAdmin', {
     id: session.id,
@@ -1462,6 +1517,11 @@ function showErrorRetry(el, msg, retryFn){
 }
 
 var _chatHistoryLoading = false;
+// 2026-11-12（冰爪）：加载失败后的自动兜底重试计数。
+// 配合 apiGet 内部的退避重试（3 次尝试），最多再自动兜 CHAT_AUTO_RETRY_MAX 次。
+var _chatAutoRetry = 0;
+const CHAT_AUTO_RETRY_MAX = 2;     // 自动兜底重试次数
+const CHAT_AUTO_RETRY_DELAY = 12000; // 每次兜底间隔 12s（网络抖是随机的，等一下大概率能通）
 function loadChatHistory(page){
   if(!session || _chatHistoryLoading) return;
   _chatHistoryLoading = true;
@@ -1487,6 +1547,8 @@ function loadChatHistory(page){
       return;
     }
     var messages = res.messages || [];
+    // 加载成功 ⇒ 重置自动兜底重试计数（否则一次失败后计数残留，后续真失败会被误判已超限）
+    _chatAutoRetry = 0;
     // Sort by timestamp descending (newest first) — seq is unreliable after counter resets
     messages.sort(function(a,b){ return new Date(b.timestamp) - new Date(a.timestamp); });
     if(messages.length === 0){
@@ -1515,8 +1577,22 @@ function loadChatHistory(page){
     document.getElementById('chat-prev-btn').disabled = page <= 1;
     document.getElementById('chat-next-btn').disabled = page >= totalPages;
   }).catch(function(err){
-    showErrorRetry(document.getElementById('chat-history-list'), '网络错误', function(){ loadChatHistory(page); });
-    document.getElementById('chat-page-info').textContent = '加载失败';
+    // 2026-11-12（冰爪）：apiGet 已自带退避重试（3 次尝试），到这里说明连试 3 次都失败。
+    // 这里再给一次「延迟自动重试」：网络抖是随机的，等一会儿大概率能通 ——
+    // 目标是让用户**不用手点「重试」**。30s 内最多自动兜 2 次。
+    var el = document.getElementById('chat-history-list');
+    var pageInfo = document.getElementById('chat-page-info');
+    _chatAutoRetry = (_chatAutoRetry || 0) + 1;
+    if(_chatAutoRetry <= CHAT_AUTO_RETRY_MAX){
+      if(pageInfo) pageInfo.textContent = '网络较慢，正在自动重试（' + _chatAutoRetry + '/' + CHAT_AUTO_RETRY_MAX + '）…';
+      setTimeout(function(){
+        if(session) { _chatHistoryLoading = false; loadChatHistory(page); }
+      }, CHAT_AUTO_RETRY_DELAY);
+      return;
+    }
+    _chatAutoRetry = 0;
+    showErrorRetry(el, '网络错误：已自动重试 ' + CHAT_AUTO_RETRY_MAX + ' 次仍失败，可点下方按钮手动重试', function(){ loadChatHistory(page); });
+    if(pageInfo) pageInfo.textContent = '加载失败';
   }).finally(function(){
     _chatHistoryLoading = false;
     if(refreshBtn) refreshBtn.disabled = false;
